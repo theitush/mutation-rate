@@ -1,3 +1,7 @@
+import json
+import os
+import pandas as pd
+
 from matplotlib import pyplot as plt
 
 
@@ -104,3 +108,17 @@ def plot_overview(freqs):
         axes[2][i].set_title(f"Mutations Decreasing in Frequency in Sample {i+1}")
         axes[2][i].legend(bbox_to_anchor=(1, 1))
     return fig, axes
+
+
+def get_reads_by_mutations(mutation_list, pipeline_dir):
+    """ Expects mutation_list to be like [(1697.0,'C'), (1691.0, 'C'), (1685.0, 'T'), (1649.0,'C')] """
+    called_bases = pd.read_table(os.path.join(pipeline_dir, 'called_bases.tsv'))
+    with open(os.path.join(pipeline_dir, 'read_id_prefixes.json')) as json_file:
+        prefixes = json.load(json_file)
+    reads = []
+    for position, base in mutation_list:
+        read_ids = called_bases[(called_bases.ref_pos == position) & (called_bases.read_base == base)].read_id.unique()
+        for read in read_ids:
+            key, suffix = read.split('-')
+            reads.append(prefixes[key] + suffix)
+    return reads
