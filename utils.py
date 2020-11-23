@@ -122,3 +122,21 @@ def get_reads_by_mutations(mutation_list, pipeline_dir):
             key, suffix = read.split('-')
             reads.append(prefixes[key] + suffix)
     return reads
+
+
+def reg_plot(x, y, size=None, save_to=None):
+    if size is None:
+        size = 10
+    max_val = max(max(x), max(y))
+    min_val = min(min(x), min(y))
+    set_plots_size_params(size*2)
+    plt.figure(figsize=(size*1.5, size))
+    plt.scatter(x, y)
+    plt.plot([min_val, max_val], [min_val, max_val])
+    try:
+        plt.xlabel(x.name)
+        plt.ylabel(y.name)
+    except:
+        print("Couldn't set axes names. Trying putting pd.Series objects as x & y")
+    if save_to:
+        plt.savefig(save_to)
