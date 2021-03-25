@@ -1,4 +1,6 @@
+import argparse
 import math
+import os
 
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -78,20 +80,20 @@ def l1_distance(simulation, data):
 def run_smc(priors, data, epsilon, max_episodes, smc_population_size, sequence_sample_size, pop_size, gen_num,
             distance_function=l1_distance):
     start = time.time()
-    initial_freq = data[0]
+    initial_freq = data.iloc[0]  # might be an issue later..
     try:
         iter(initial_freq)
     except:  # the avg method only gets one intial freq
         initial_freq = [initial_freq]
     model = partial(smc_model, intial_freq=initial_freq, sequence_sample_size=sequence_sample_size,
-                    pop_size=pop_size,gen_num=gen_num)
+                    pop_size=pop_size, gen_num=gen_num)
     model.__name__ = 'model with params'  # SMC needs this for some reason...
     abc = pyabc.ABCSMC(
             model, priors, distance_function, smc_population_size)
     db_path = ("sqlite:///test.db")
     smc_post = abc.new(db_path, {'a': data})
     smc_post = abc.run(minimum_epsilon=epsilon, max_nr_populations=max_episodes)
-    print("SMC run time: ", round(time.time()-start,2))
+    print("SMC run time: ", round(time.time()-start, 2))
     print("Total number of SMC simulations: ", smc_post.total_nr_simulations)
     return smc_post
 
@@ -112,7 +114,7 @@ def plot_2d_kde_from_df(df, real_w, real_mu, ax, title):
     sns.kdeplot(data=df, x='mu', y='w', weights='weights', ax=ax)
     ax.plot(math.log10(real_mu), real_w, marker='o', color='red')
     ax.set_xlabel('log10(mu)')
-    ax.set_ylim([-0.2,2.2])
+    ax.set_ylim([-0.2, 2.2])
     ax.set_xlim([-8, -2])
     ax.set_title(title)
 
@@ -131,17 +133,20 @@ def plot_kdes(fitness, mutation_rate, posts):
 
 
 def run_methods(mutation_rate, fitness, epsilon=0.005, max_episodes=10, w_prior=(0,2), mu_prior=(-7,5),
-                smc_population_size=1000, wt_freqs=(0,), methods='All', model_ss=10 ** 5, data_ss=10 ** 5,
-                pop_size=10**8, gen_num=10):
+                smc_population_size=1000, initial_data=(0,), methods='All', model_ss=10 ** 5, data_ss=10 ** 5,
+                pop_size=10**8, gen_num=10, plot=True):
     """
     This is the main tool which runs multiple methods and graphs their posteriors.
     """
-    if methods== 'All':
+    if methods == 'All':
         methods = ['megapost', 'megadist', 'avg']
-    print("Creating dataset...")
-    data = simulate_data(generations_number=gen_num, wt_freqs=wt_freqs,  mutation_rate=mutation_rate,
-                         population_size=pop_size, fitness=fitness, sequence_sample_size=data_ss,
-                         plot=False)
+    if not (isinstance(initial_data, pd.DataFrame) or isinstance(initial_data, pd.Series)):
+        print("Creating dataset...")
+        data = simulate_data(generations_number=gen_num, wt_freqs=initial_data, mutation_rate=mutation_rate,
+                             population_size=pop_size, fitness=fitness, sequence_sample_size=data_ss,
+                             plot=False)
+    else:
+        data = initial_data
     prior_dist = pyabc.Distribution(w=pyabc.RV("uniform", w_prior[0], w_prior[1]),
                                     mu=pyabc.RV("uniform", mu_prior[0], mu_prior[1]))
     posts = dict()
@@ -152,7 +157,7 @@ def run_methods(mutation_rate, fitness, epsilon=0.005, max_episodes=10, w_prior=
                                            sequence_sample_size=model_ss, gen_num=gen_num, pop_size=pop_size)
     if 'megadist' in methods:
         print("Inferring with mega distance function")
-        megadist, ws = run_smc(priors=prior_dist, data=data, epsilon=len(wt_freqs)*epsilon, max_episodes=max_episodes,
+        megadist, ws = run_smc(priors=prior_dist, data=data, epsilon=len(data) * epsilon, max_episodes=max_episodes,
                                smc_population_size=smc_population_size, gen_num=gen_num, pop_size=pop_size,
                                sequence_sample_size=model_ss).get_distribution()
         megadist['weights'] = ws
@@ -164,5 +169,35 @@ def run_methods(mutation_rate, fitness, epsilon=0.005, max_episodes=10, w_prior=
                           sequence_sample_size=model_ss).get_distribution()
         avg['weights'] = ws
         posts['avg'] = avg
-    plot_kdes(fitness, mutation_rate, posts)
+    if plot:
+        plot_kdes(fitness, mutation_rate, posts)
     return posts
+
+
+def _wrangle_cli_input_data(data_path, line_number):
+    df = pd.read_table(data_path)
+    data = df.iloc[line_number]
+    position = str(data.ref_pos)
+    data = data.iloc[1:]
+    data.name = 0
+    data.index = data.index.astype(int)
+    return position, data
+
+
+def cli_smc_on_line(data_path, line_number, output_path, epsilon=0.000001, max_episodes=15, w_prior=(0, 2),
+                    mu_prior=(-7, 5), pop_size=10**8, gen_num=10, smc_population_size=1000, model_ss=10**5):
+    position, data = _wrangle_cli_input_data(data_path, line_number)
+    post = run_methods(0, 0, epsilon=epsilon, max_episodes=max_episodes, w_prior=w_prior, mu_prior=mu_prior,
+                       smc_population_size=smc_population_size, initial_data=data, methods='megadist',
+                       model_ss=model_ss, pop_size=pop_size, gen_num=gen_num, plot=False)
+    os.makedirs(output_path, exist_ok=True)
+    post['megadist'].to_csv(os.path.join(output_path, position), sep='\t')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--data_path", type=str, help="path to data file", required=True)
+    parser.add_argument("-l", "--line_number", type=str, help="line in data file to run on", required=True)
+    parser.add_argument("-o", "--output_path", type=str, help="directory for output files", required=True)
+    args = parser.parse_args()
+    cli_smc_on_line(data_path=args.data_path, line_number=args.line_number, output_path=args.output_path)
