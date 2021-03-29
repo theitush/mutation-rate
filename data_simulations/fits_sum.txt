@@ -1,0 +1,18 @@
+Mutation Rate Report
+===============
+FITS v1.3.3
+2021-02-21 (year-month-day) 18:46:09 (hours:minutes:seconds)
+Parameters file: ../FITS/parameters.txt
+Data file: fits_input_data.tsv
+Simulation results used for calculations: 1000
+Alleles: 2
+Total running time 00:00:03 (hh:mm:ss)
+---------------------
+Population size (N) is 100000000
+Used individual mutation rates.
+Distance metric: L1
+ (sampled 100000)
+====================
+from  to    median      MAD         min         max         pval        
+0     1     1.75e-07    5.70e-08    1.00e-07    1.64e-06    1.12e-47    
+1     0     *2.52e-05   2.55e-05    1.01e-07    9.97e-03    1.21e-01    
