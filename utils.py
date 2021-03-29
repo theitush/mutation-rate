@@ -140,3 +140,37 @@ def reg_plot(x, y, size=None, save_to=None):
         print("Couldn't set axes names. Trying putting pd.Series objects as x & y")
     if save_to:
         plt.savefig(save_to)
+
+
+def create_pbs_cmd_file(path, alias, output_logs_dir, cmd, queue, gmem=10, ncpus=50, nodes=1, custom_command=None,
+                        jnums=None, run_after_job_id=None, job_suffix=None, default_command=None):
+    with open(path, 'w') as o:
+        o.write("#!/bin/bash\n#PBS -S /bin/bash\n#PBS -j oe\n#PBS -r y\n")
+        o.write(f"#PBS -q {queue}\n")
+        o.write("#PBS -v PBS_O_SHELL=bash,PBS_ENVIRONMENT=PBS_BATCH \n")
+        o.write("#PBS -N " + alias + "\n")
+        o.write(f"#PBS -o {output_logs_dir} \n")
+        o.write(f"#PBS -e {output_logs_dir} \n")
+        o.write(f"#PBS -l select={nodes}:ncpus={ncpus}:mem={gmem}gb\n")
+        if jnums:
+            if isinstance(jnums, int):
+                o.write(f"#PBS -J 1-{str(jnums)} \n\n")
+            else:
+                o.write(f"#PBS -J {str(jnums[0])}-{str(jnums[1])} \n\n")
+        if run_after_job_id:
+            if job_suffix:
+                run_after_job_id = str(run_after_job_id) + job_suffix
+            o.write("#PBS -W depend=afterok:" + str(run_after_job_id) + "\n")
+        if default_command:
+            o.write(default_command + "\n")
+        if custom_command:
+            o.write(custom_command + "\n")
+        o.write(cmd)
+    o.close()
+
+
+def submit_cmdfile_to_pbs(cmdfile, pbs_cmd_path):
+    cmd = f"{pbs_cmd_path} {cmdfile}"
+    result = os.popen(cmd).read()
+    return result.split(".")[0]
+
