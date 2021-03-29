@@ -200,4 +200,4 @@ if __name__ == '__main__':
     parser.add_argument("-l", "--line_number", type=str, help="line in data file to run on", required=True)
     parser.add_argument("-o", "--output_path", type=str, help="directory for output files", required=True)
     args = parser.parse_args()
-    cli_smc_on_line(data_path=args.data_path, line_number=args.line_number, output_path=args.output_path)
+    cli_smc_on_line(data_path=args.data_path, line_number=int(args.line_number), output_path=args.output_path)
