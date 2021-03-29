@@ -15,7 +15,6 @@ def msc_cli(input_path, output_dir):
     logs_dir = os.path.join(output_dir, 'logs')
     os.makedirs(logs_dir, exist_ok=True)
     cmd_path = os.path.join(logs_dir, 'msc_cli.cmd')
-    process.run()
     cmd = "PYTHONPATH={PYTHON_PATH}\n"
     cmd += f"{PYTHON_PATH} {MODELING_REPO}/modeling.py -i {input_path} -o {output_dir} " + "-l ${PBS_ARRAY_INDEX}"
     jnums = (0, len(df)-1)
