@@ -1,6 +1,7 @@
 import argparse
 import os
 import pandas as pd
+from subprocess import call
 from utils import create_pbs_cmd_file, submit_cmdfile_to_pbs
 
 MODELING_REPO = "/sternadi/home/volume2/ita/wf_modeling/"
@@ -14,7 +15,9 @@ def msc_cli(input_path, output_dir):
     logs_dir = os.path.join(output_dir, 'logs')
     os.makedirs(logs_dir, exist_ok=True)
     cmd_path = os.path.join(logs_dir, 'msc_cli.cmd')
-    cmd = f"{PYTHON_PATH} {MODELING_REPO}/modeling.py -i {input_path} -o {output_dir} " + "-l ${PBS_ARRAY_INDEX}"
+    process.run()
+    cmd = "PYTHONPATH={PYTHON_PATH}\n"
+    cmd += f"{PYTHON_PATH} {MODELING_REPO}/modeling.py -i {input_path} -o {output_dir} " + "-l ${PBS_ARRAY_INDEX}"
     jnums = (0, len(df)-1)
     create_pbs_cmd_file(path=cmd_path, alias='msc_cli', output_logs_dir=logs_dir, jnums=jnums, cmd=cmd, queue=QUEUE)
     job_id = submit_cmdfile_to_pbs(cmd_path, pbs_cmd_path=PBS_CMD_PATH)
