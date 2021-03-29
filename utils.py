@@ -142,7 +142,7 @@ def reg_plot(x, y, size=None, save_to=None):
         plt.savefig(save_to)
 
 
-def create_pbs_cmd_file(path, alias, output_logs_dir, cmd, queue, gmem=10, ncpus=50, nodes=1, custom_command=None,
+def create_pbs_cmd_file(path, alias, output_logs_dir, cmd, queue, gmem=10, ncpus=20, nodes=1, custom_command=None,
                         jnums=None, run_after_job_id=None, job_suffix=None, default_command=None):
     with open(path, 'w') as o:
         o.write("#!/bin/bash\n#PBS -S /bin/bash\n#PBS -j oe\n#PBS -r y\n")
