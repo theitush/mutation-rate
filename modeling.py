@@ -1,6 +1,7 @@
 import argparse
 import math
 import os
+import random
 
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -90,22 +91,27 @@ def run_smc(priors, data, epsilon, max_episodes, smc_population_size, sequence_s
     model.__name__ = 'model with params'  # SMC needs this for some reason...
     abc = pyabc.ABCSMC(
             model, priors, distance_function, smc_population_size)
-    db_path = ("sqlite:///test.db")
-    smc_post = abc.new(db_path, {'a': data})
+    dbs_dir = '.temp_smc_dbs'
+    os.makedirs(dbs_dir, exist_ok=True)
+    random_num = random.randint(0, 9999)
+    db_path = os.path.join(dbs_dir, f"db_{random_num}.db")
+    sql_path = (f"sqlite:///{db_path}")
+    smc_post = abc.new(sql_path, {'a': data})
     smc_post = abc.run(minimum_epsilon=epsilon, max_nr_populations=max_episodes)
     print("SMC run time: ", round(time.time()-start, 2))
     print("Total number of SMC simulations: ", smc_post.total_nr_simulations)
-    return smc_post
+    df, ws = smc_post.get_distribution()
+    df['weights'] = ws
+    os.remove(db_path)
+    return df
 
 
 def infer_megapost(prior_dist, data, epsilon, max_episodes, smc_population_size, sequence_sample_size,
                    gen_num, pop_size):
     megapost = pd.DataFrame()
     for i, row in data.iterrows():
-        smc_run = run_smc(prior_dist, row, epsilon, max_episodes, smc_population_size,
+        df = run_smc(prior_dist, row, epsilon, max_episodes, smc_population_size,
                           sequence_sample_size=sequence_sample_size, gen_num=gen_num, pop_size=pop_size)
-        df, weights = smc_run.get_distribution()
-        df['weights'] = weights
         megapost = pd.concat([megapost, df])
     return megapost
 
@@ -157,18 +163,14 @@ def run_methods(mutation_rate, fitness, epsilon=0.005, max_episodes=10, w_prior=
                                            sequence_sample_size=model_ss, gen_num=gen_num, pop_size=pop_size)
     if 'megadist' in methods:
         print("Inferring with mega distance function")
-        megadist, ws = run_smc(priors=prior_dist, data=data, epsilon=len(data) * epsilon, max_episodes=max_episodes,
-                               smc_population_size=smc_population_size, gen_num=gen_num, pop_size=pop_size,
-                               sequence_sample_size=model_ss).get_distribution()
-        megadist['weights'] = ws
-        posts['megadist'] = megadist
+        posts['megadist'] = run_smc(priors=prior_dist, data=data, epsilon=len(data) * epsilon, max_episodes=max_episodes,
+                                    smc_population_size=smc_population_size, gen_num=gen_num, pop_size=pop_size,
+                                    sequence_sample_size=model_ss)
     if 'avg' in methods:
         print("Inferring from avgs")
-        avg, ws = run_smc(priors=prior_dist, data=data.mean(), epsilon=epsilon, max_episodes=max_episodes,
-                          smc_population_size=smc_population_size, gen_num=gen_num, pop_size=pop_size,
-                          sequence_sample_size=model_ss).get_distribution()
-        avg['weights'] = ws
-        posts['avg'] = avg
+        posts['avg'] = run_smc(priors=prior_dist, data=data.mean(), epsilon=epsilon, max_episodes=max_episodes,
+                               smc_population_size=smc_population_size, gen_num=gen_num, pop_size=pop_size,
+                               sequence_sample_size=model_ss)
     if plot:
         plot_kdes(fitness, mutation_rate, posts)
     return posts
