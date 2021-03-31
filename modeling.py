@@ -91,6 +91,7 @@ def run_smc(priors, data, epsilon, max_episodes, smc_population_size, sequence_s
     model.__name__ = 'model with params'  # SMC needs this for some reason...
     abc = pyabc.ABCSMC(
             model, priors, distance_function, smc_population_size)
+    # TODO: add a readme to temp_smc_dbs folder.. or erase on error..?
     dbs_dir = '.temp_smc_dbs'
     os.makedirs(dbs_dir, exist_ok=True)
     random_num = random.randint(0, 9999)
