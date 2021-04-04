@@ -38,7 +38,7 @@ def wf_multiple_generations(generations_number, wt_freq, population_size, fitnes
 
 
 def simulate_data(generations_number, wt_freqs, population_size, fitness, mutation_rate, sequence_sample_size,
-                  color=None, label=None, plot=True):
+                  initial_gen=0, color=None, label=None, plot=True):
     """
     This function has 3 uses:
         1. Its the model's simulator
@@ -63,31 +63,30 @@ def simulate_data(generations_number, wt_freqs, population_size, fitness, mutati
         leg = plt.legend()
         for lh in leg.legendHandles:
             lh.set_alpha(1)
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    df.columns += initial_gen
+    return df
 
 
-def smc_model(parameters, intial_freq, sequence_sample_size, pop_size, gen_num):
+def smc_model(parameters, intial_freq, sequence_sample_size, pop_size, gen_num, initial_gen):
     mutation_rate = 10 ** parameters['mu']
     fitness = parameters['w']
     return {'a': simulate_data(generations_number=gen_num,  wt_freqs=intial_freq, population_size=pop_size,
                                mutation_rate=mutation_rate, fitness=fitness, sequence_sample_size=sequence_sample_size,
-                               plot=False, color=False, label=False)}
+                               initial_gen=initial_gen, plot=False, color=False, label=False)}
 
 
 def l1_distance(simulation, data):
     return abs(data['a'] - simulation['a']).sum().sum()  # double sum for multi allele compatibility
 
 
-def run_smc(priors, data, epsilon, max_episodes, smc_population_size, sequence_sample_size, pop_size, gen_num,
+def run_smc(priors, data, epsilon, max_episodes, smc_population_size, sequence_sample_size, pop_size,
             distance_function=l1_distance):
     start = time.time()
-    initial_freq = data.iloc[0]  # might be an issue later..
-    try:
-        iter(initial_freq)
-    except:  # the avg method only gets one intial freq
-        initial_freq = [initial_freq]
-    model = partial(smc_model, intial_freq=initial_freq, sequence_sample_size=sequence_sample_size,
-                    pop_size=pop_size, gen_num=gen_num)
+    initial_gen = data.columns.min()
+    gen_num = data.columns.max() - initial_gen
+    model = partial(smc_model, intial_freq=data[initial_gen].values, sequence_sample_size=sequence_sample_size,
+                    pop_size=pop_size, gen_num=gen_num, initial_gen=initial_gen)
     model.__name__ = 'model with params'  # SMC needs this for some reason...
     abc = pyabc.ABCSMC(
             model, priors, distance_function, smc_population_size)
@@ -108,11 +107,11 @@ def run_smc(priors, data, epsilon, max_episodes, smc_population_size, sequence_s
 
 
 def infer_megapost(prior_dist, data, epsilon, max_episodes, smc_population_size, sequence_sample_size,
-                   gen_num, pop_size):
+                   pop_size):
     megapost = pd.DataFrame()
     for i, row in data.iterrows():
         df = run_smc(prior_dist, row, epsilon, max_episodes, smc_population_size,
-                          sequence_sample_size=sequence_sample_size, gen_num=gen_num, pop_size=pop_size)
+                          sequence_sample_size=sequence_sample_size, pop_size=pop_size)
         megapost = pd.concat([megapost, df])
     return megapost
 
@@ -140,38 +139,33 @@ def plot_kdes(fitness, mutation_rate, posts):
 
 
 def run_methods(mutation_rate, fitness, epsilon=0.005, max_episodes=10, w_prior=(0,2), mu_prior=(-7,5),
-                smc_population_size=1000, initial_data=(0,), methods='All', model_ss=10 ** 5, data_ss=10 ** 5,
-                pop_size=10**8, gen_num=10, plot=True):
+                smc_population_size=1000, data=(0,), methods='All', model_ss=10 ** 5, data_ss=10 ** 5,
+                pop_size=10**8, gen_num=10, position=None, plot=True):
     """
     This is the main tool which runs multiple methods and graphs their posteriors.
     """
     if methods == 'All':
-        methods = ['megapost', 'megadist', 'avg']
-    if not (isinstance(initial_data, pd.DataFrame) or isinstance(initial_data, pd.Series)):
+        methods = ['megapost', 'megadist']
+    if not (isinstance(data, pd.DataFrame) or isinstance(data, pd.Series)):
         print("Creating dataset...")
-        data = simulate_data(generations_number=gen_num, wt_freqs=initial_data, mutation_rate=mutation_rate,
+        data = simulate_data(generations_number=gen_num, wt_freqs=data, mutation_rate=mutation_rate,
                              population_size=pop_size, fitness=fitness, sequence_sample_size=data_ss,
                              plot=False)
-    else:
-        data = initial_data
     prior_dist = pyabc.Distribution(w=pyabc.RV("uniform", w_prior[0], w_prior[1]),
                                     mu=pyabc.RV("uniform", mu_prior[0], mu_prior[1]))
     posts = dict()
+    if position:
+        print(f"position: {position}")  # just for the logging
     if 'megapost' in methods:
         print("Inferring with mega posterior")
         posts['megapost'] = infer_megapost(prior_dist=prior_dist, data=data, epsilon=epsilon,
                                            max_episodes=max_episodes, smc_population_size=smc_population_size,
-                                           sequence_sample_size=model_ss, gen_num=gen_num, pop_size=pop_size)
+                                           sequence_sample_size=model_ss, pop_size=pop_size)
     if 'megadist' in methods:
         print("Inferring with mega distance function")
         posts['megadist'] = run_smc(priors=prior_dist, data=data, epsilon=len(data) * epsilon, max_episodes=max_episodes,
-                                    smc_population_size=smc_population_size, gen_num=gen_num, pop_size=pop_size,
+                                    smc_population_size=smc_population_size, pop_size=pop_size,
                                     sequence_sample_size=model_ss)
-    if 'avg' in methods:
-        print("Inferring from avgs")
-        posts['avg'] = run_smc(priors=prior_dist, data=data.mean(), epsilon=epsilon, max_episodes=max_episodes,
-                               smc_population_size=smc_population_size, gen_num=gen_num, pop_size=pop_size,
-                               sequence_sample_size=model_ss)
     if plot:
         plot_kdes(fitness, mutation_rate, posts)
     return posts
@@ -184,6 +178,7 @@ def _wrangle_cli_input_data(data_path, line_number):
     data = data.iloc[1:]
     data.name = 0
     data.index = data.index.astype(int)
+    data = pd.DataFrame(data).T
     return position, data
 
 
@@ -191,7 +186,7 @@ def cli_smc_on_line(data_path, line_number, output_path, epsilon=0.000001, max_e
                     mu_prior=(-7, 5), pop_size=10**8, gen_num=10, smc_population_size=1000, model_ss=10**5):
     position, data = _wrangle_cli_input_data(data_path, line_number)
     post = run_methods(0, 0, epsilon=epsilon, max_episodes=max_episodes, w_prior=w_prior, mu_prior=mu_prior,
-                       smc_population_size=smc_population_size, initial_data=data, methods='megadist',
+                       smc_population_size=smc_population_size, data=data, methods='megadist', position=position,
                        model_ss=model_ss, pop_size=pop_size, gen_num=gen_num, plot=False)
     os.makedirs(output_path, exist_ok=True)
     post['megadist'].to_csv(os.path.join(output_path, position), sep='\t')
