@@ -80,6 +80,12 @@ def l1_distance(simulation, data):
     return abs(data['a'] - simulation['a']).sum().sum()  # double sum for multi allele compatibility
 
 
+def weighted_l1(simulation, data):
+    data_mean = data['a'].mean(axis=1)
+    data_diff = (data['a'] - simulation['a']).T
+    return abs(data_diff/data_mean).sum().sum()
+
+
 def run_smc(priors, data, epsilon, max_episodes, smc_population_size, sequence_sample_size, pop_size,
             distance_function=l1_distance):
     start = time.time()
@@ -169,6 +175,33 @@ def run_methods(mutation_rate, fitness, epsilon=0.005, max_episodes=10, w_prior=
     if plot:
         plot_kdes(fitness, mutation_rate, posts)
     return posts
+
+
+def smc_weighted_dist(mutation_rate, fitness, max_episodes=10, w_prior=(0, 2), mu_prior=(-7, 5),
+                      smc_population_size=1000, data=(0,), model_ss=10**4, data_ss=10**4,
+                      pop_size=10**8, gen_num=10, position=None, plot=True):
+    """
+    This is the main tool which runs multiple methods and graphs their posteriors.
+    """
+    if not (isinstance(data, pd.DataFrame) or isinstance(data, pd.Series)):
+        print("Creating dataset...")
+        data = simulate_data(generations_number=gen_num, wt_freqs=data, mutation_rate=mutation_rate,
+                             population_size=pop_size, fitness=fitness, sequence_sample_size=data_ss,
+                             plot=False)
+
+    data = data[(data.T != 0).any()]  # drop rows where all columns are zero
+    # TODO: does this not bias the data against lower mu & w????
+    prior_dist = pyabc.Distribution(w=pyabc.RV("uniform", w_prior[0], w_prior[1]),
+                                    mu=pyabc.RV("uniform", mu_prior[0], mu_prior[1]))
+    if position:
+        print(f"position: {position}")  # just for the logging
+    df = run_smc(priors=prior_dist, data=data, epsilon=0, max_episodes=max_episodes,
+                 smc_population_size=smc_population_size, pop_size=pop_size,
+                 sequence_sample_size=model_ss, distance_function=weighted_l1)
+    if plot:
+        fig, ax = plt.subplots(1, 1)
+        plot_2d_kde_from_df(df, fitness, mutation_rate, ax, 'Weighted Distance Inference')
+    return df
 
 
 def _wrangle_cli_input_data(data_path, line_number):
